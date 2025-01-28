@@ -1,0 +1,56 @@
+{
+    "Instagram": {
+        "Reels Campaign": {
+            "description": "Short-form video content campaign",
+            "objectives": [
+                "Launch 30 Reels in 30 days",
+                "Achieve 100k views per Reel",
+                "Increase profile visits by 50%"
+            ],
+            "timeline": "Q1 2025",
+            "metrics": [
+                "Views per Reel",
+                "Profile visits",
+                "Account reach",
+                "Save rate"
+            ],
+            "status": "active"
+        }
+    },
+    "TikTok": {
+        "Viral Challenge": {
+            "description": "Launch viral challenge campaign",
+            "objectives": [
+                "Create trending hashtag",
+                "Reach 1M views",
+                "Generate 100k user-generated contents"
+            ],
+            "timeline": "Q2 2025",
+            "metrics": [
+                "View count",
+                "Hashtag usage",
+                "Share rate",
+                "User participation"
+            ],
+            "status": "pending"
+        }
+    },
+    "LinkedIn": {
+        "Thought Leadership": {
+            "description": "Professional insights and industry expertise",
+            "objectives": [
+                "Establish industry authority",
+                "Increase B2B leads by 25%",
+                "Improve content engagement"
+            ],
+            "timeline": "Q2 2025",
+            "metrics": [
+                "Post engagement",
+                "Profile views",
+                "Connection growth",
+                "Lead generation"
+            ],
+            "status": "pending"
+        }
+    }
+}
