@@ -22,6 +22,7 @@ class ToDo(BaseModel):
     status: str = "Active"  # Can be "Active" or "Done"
     created_at: datetime = Field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
+    solutions: List[str] = Field(default_factory=list)
 
     def model_dump(self, *args, **kwargs):
         """Custom dump method to handle datetime serialization."""

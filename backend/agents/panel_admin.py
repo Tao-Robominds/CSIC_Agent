@@ -38,7 +38,7 @@ class PanelAdminAgent:
 
         gpt_request = GPTRequest(
             messages=messages,
-            model="gpt-4",
+            model="gpt-4o",
             temperature=0,
             max_tokens=10
         )

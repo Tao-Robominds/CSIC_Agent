@@ -40,7 +40,7 @@ def config():
 @pytest.mark.task_master
 class TestTaskMaistro:
     # Initialize the model once for all tests
-    model = ChatOpenAI(model="gpt-4", temperature=0)
+    model = ChatOpenAI(model="gpt-4o", temperature=0)
 
     def test_task_master_basic(self, store, config):
         state = {

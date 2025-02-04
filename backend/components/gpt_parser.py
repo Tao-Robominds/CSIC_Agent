@@ -21,7 +21,7 @@ class GPTResponse(TypedDict):
 class GPTRequest:
     """Request type for GPT chat"""
     messages: List[Dict[str, str]]
-    model: str = "gpt-4"
+    model: str = "gpt-4o"
     temperature: float = 0
     max_tokens: int = 1000
 
@@ -36,7 +36,7 @@ class GPTComponent:
         Args:
             request (GPTRequest): Dataclass containing:
                 messages (List[Dict[str, str]]): The conversation messages
-                model (str, optional): Model name. Defaults to "gpt-4"
+                model (str, optional): Model name. Defaults to "gpt-4o"
                 temperature (float, optional): Response randomness. Defaults to 0.7
                 max_tokens (int, optional): Max response length. Defaults to 1000
         """
