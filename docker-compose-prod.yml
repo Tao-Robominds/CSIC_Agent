@@ -1,0 +1,15 @@
+version: '3.3'
+
+services:
+  app:
+    build:
+      context: .
+    container_name: donnie_langgraph_container
+    ports:
+      - "8008:8000"
+    volumes:
+      - /opt/runtime/donnie_langgraph_prod:/app/data
+      - /opt/logs/donnie_langgraph_prod:/app/logs
+      - /opt/storage/donnie-blob-01:/app/storage
+    env_file:
+      - .env

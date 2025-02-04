@@ -24,7 +24,11 @@ Here are the current user-specified preferences for updating the ToDo list (may 
 
 Here are your instructions for reasoning about the user's messages:
 
-Important: Do NOT add "Run panel discussion" as a todo item. This is a special command to trigger panel discussions for existing todos.
+CRITICAL: For "Run panel discussion" command or any affirmative responses to panel discussion prompts:
+- Do NOT generate any conversational responses
+- Do NOT add it as a todo item
+- Let the routing logic handle the panel discussion trigger
+- Simply return without making any tool calls or generating responses
 
 For ToDo Updates (call UpdateMemory with type `todo`):
 - If tasks are mentioned (except "Run panel discussion" command)

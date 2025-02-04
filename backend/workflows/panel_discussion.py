@@ -3,6 +3,7 @@
 
 from dotenv import load_dotenv
 import json
+from datetime import datetime
 
 from typing import Annotated, List, TypedDict
 from typing_extensions import TypedDict
@@ -24,7 +25,18 @@ class PanelState(TypedDict):
     inquiry: str
     selected_agents: List[str]
     responses: dict
+    dependencies: dict  # Track which agent needs input from other agents
+    communication_chain: List[dict]  # Track the flow of messages between agents
     summary: str
+
+class AgentMessage:
+    """Structure for messages between agents"""
+    def __init__(self, from_agent: str, to_agent: str, content: str, depends_on: List[str] = None):
+        self.from_agent = from_agent
+        self.to_agent = to_agent
+        self.content = content
+        self.depends_on = depends_on or []
+        self.timestamp = datetime.now()
 
 class PanelDiscussionWorkflow:
     def __init__(self):
@@ -56,34 +68,103 @@ class PanelDiscussionWorkflow:
         except json.JSONDecodeError:
             return {"selected_agents": ["CEO", "CMO", "CFO"]}
 
-    def get_executive_response(self, state: PanelState) -> PanelState:
-        """Get responses from selected executives."""
-        inquiry = state["inquiry"]
-        responses = {}
+    def ceo_node(self, state: PanelState) -> PanelState:
+        """CEO's response and dependency identification."""
+        self.ceo.request = state["inquiry"]
+        response = self.ceo.actor()
         
-        agent_map = {
-            "CEO": self.ceo,
-            "CFO": self.cfo,
-            "CMO": self.cmo
+        # Check if CEO needs input from other executives
+        dependencies = self._analyze_dependencies(response, "CEO")
+        
+        return {
+            "responses": {**state.get("responses", {}), "CEO": response},
+            "dependencies": {**state.get("dependencies", {}), "CEO": dependencies},
+            "communication_chain": [*state.get("communication_chain", []), {
+                "agent": "CEO",
+                "response": response,
+                "dependencies": dependencies
+            }]
         }
+
+    def cfo_node(self, state: PanelState) -> PanelState:
+        """CFO's response with consideration of CEO's input if needed."""
+        # Check if CFO needs to wait for CEO input
+        ceo_response = state.get("responses", {}).get("CEO")
         
-        for agent_name in state["selected_agents"]:
-            if agent_name in agent_map:
-                agent = agent_map[agent_name]
-                agent.request = inquiry
-                responses[agent_name] = agent.actor()
-                
-        return {"responses": responses}
+        self.cfo.request = self._prepare_request(
+            state["inquiry"], 
+            state.get("communication_chain", [])
+        )
+        response = self.cfo.actor()
+        dependencies = self._analyze_dependencies(response, "CFO")
+        
+        return {
+            "responses": {**state.get("responses", {}), "CFO": response},
+            "dependencies": {**state.get("dependencies", {}), "CFO": dependencies},
+            "communication_chain": [*state.get("communication_chain", []), {
+                "agent": "CFO",
+                "response": response,
+                "dependencies": dependencies
+            }]
+        }
+
+    def cmo_node(self, state: PanelState) -> PanelState:
+        """CMO's response with consideration of previous inputs."""
+        self.cmo.request = self._prepare_request(
+            state["inquiry"], 
+            state.get("communication_chain", [])
+        )
+        response = self.cmo.actor()
+        dependencies = self._analyze_dependencies(response, "CMO")
+        
+        return {
+            "responses": {**state.get("responses", {}), "CMO": response},
+            "dependencies": {**state.get("dependencies", {}), "CMO": dependencies},
+            "communication_chain": [*state.get("communication_chain", []), {
+                "agent": "CMO",
+                "response": response,
+                "dependencies": dependencies
+            }]
+        }
+
+    def _analyze_dependencies(self, response: str, agent: str) -> List[str]:
+        """Analyze response to identify dependencies on other executives."""
+        # Use GPT to analyze the response and identify dependencies
+        analysis_prompt = f"""
+        Analyze this response from the {agent} and identify which other executives' input might be needed:
+        {response}
+        
+        Return only the list of required executives (CEO, CFO, CMO) or empty list if none required.
+        """
+        # Implementation of dependency analysis...
+        return []
+
+    def _prepare_request(self, inquiry: str, communication_chain: List[dict]) -> str:
+        """Prepare request with context from previous responses."""
+        context = "\n\n".join([
+            f"{msg['agent']}: {msg['response']}"
+            for msg in communication_chain
+        ])
+        
+        return f"""Original inquiry: {inquiry}
+
+Previous responses:
+{context}
+
+Please consider the above context in your response."""
 
     def summarize_discussion(self, state: PanelState) -> PanelState:
         """Summarize the panel discussion."""
         inquiry = state["inquiry"]
-        responses = state["responses"]
         
-        conversation_history = [
-            {"role": role, "content": content}
-            for role, content in responses.items()
-        ]
+        # Create conversation history with dependencies
+        conversation_history = []
+        for msg in state.get("communication_chain", []):
+            conversation_history.append({
+                "role": msg["agent"],
+                "content": msg["response"],
+                "dependencies": msg["dependencies"]
+            })
         
         summarizer = DiscussionSummarizer(inquiry, conversation_history)
         summary = summarizer.generate_summary()
@@ -98,30 +179,60 @@ class PanelDiscussionWorkflow:
         return "get_responses"
 
     def _create_workflow(self) -> StateGraph:
-        """Create the workflow graph."""
+        """Create the workflow graph with communication between agents."""
         workflow = StateGraph(PanelState)
 
         # Add nodes
         workflow.add_node("select_panel", self.select_panel_members)
-        workflow.add_node("get_responses", self.get_executive_response)
+        workflow.add_node("ceo_response", self.ceo_node)
+        workflow.add_node("cfo_response", self.cfo_node)
+        workflow.add_node("cmo_response", self.cmo_node)
         workflow.add_node("summarize", self.summarize_discussion)
 
         # Add edges
         workflow.add_edge(START, "select_panel")
-        workflow.add_edge("select_panel", "get_responses")
-
-        # Add conditional edge after getting responses
+        workflow.add_edge("select_panel", "ceo_response")
+        
+        # Add conditional edges based on dependencies
         workflow.add_conditional_edges(
-            "get_responses",
-            self.should_end,
+            "ceo_response",
+            self._route_after_ceo,
             {
-                "summarize": "summarize",
-                "get_responses": "get_responses"
+                "cfo_response": "cfo_response",
+                "cmo_response": "cmo_response",
+                "summarize": "summarize"
             }
         )
+        
+        workflow.add_conditional_edges(
+            "cfo_response",
+            self._route_after_cfo,
+            {
+                "cmo_response": "cmo_response",
+                "summarize": "summarize"
+            }
+        )
+        
+        workflow.add_edge("cmo_response", "summarize")
         workflow.add_edge("summarize", END)
 
         return workflow
+
+    def _route_after_ceo(self, state: PanelState) -> str:
+        """Route to next node based on CEO's response dependencies."""
+        deps = state.get("dependencies", {}).get("CEO", [])
+        if "CFO" in deps:
+            return "cfo_response"
+        elif "CMO" in deps:
+            return "cmo_response"
+        return "summarize"
+
+    def _route_after_cfo(self, state: PanelState) -> str:
+        """Route to next node based on CFO's response dependencies."""
+        deps = state.get("dependencies", {}).get("CFO", [])
+        if "CMO" in deps:
+            return "cmo_response"
+        return "summarize"
 
     def run(self, inquiry: str) -> str:
         """Run the panel discussion workflow."""
