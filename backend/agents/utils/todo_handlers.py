@@ -9,7 +9,7 @@ from langchain_core.messages import merge_message_runs
 from backend.agents.utils.spy import Spy
 from backend.agents.utils.extract_tool_info import extract_tool_info
 from backend.agents.utils.schemas import ToDo
-from backend.agents.prompts.task_master_prompts import TRUSTCALL_INSTRUCTION
+from backend.agents.prompts.panel_master_prompts import TRUSTCALL_INSTRUCTION
 from trustcall import create_extractor
 from datetime import datetime
 

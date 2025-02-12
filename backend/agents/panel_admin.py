@@ -2,7 +2,6 @@
 # -*- encoding: utf-8 -*-
 
 import json
-import os
 import requests
 from backend.agents.utils.session_handler import SessionHandler
 from backend.components.gpt_parser import GPTComponent, GPTRequest

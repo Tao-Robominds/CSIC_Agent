@@ -12,68 +12,10 @@ from trustcall import create_extractor
 
 from backend.agents.utils.spy import Spy
 from backend.agents.utils.extract_tool_info import extract_tool_info
-from backend.agents.utils.schemas import Command, ToDo
+from backend.agents.utils.schemas import ToDo
 from backend.agents.utils.configuration import Configuration
-from backend.agents.prompts.task_master_prompts import TRUSTCALL_INSTRUCTION, CREATE_INSTRUCTIONS
+from backend.agents.prompts.panel_master_prompts import CREATE_INSTRUCTIONS
 from backend.agents.utils.todo_handlers import handle_todo_operation, handle_todo_update
-
-def update_command(state: MessagesState, config: RunnableConfig, store: Optional[BaseStore], model: BaseChatModel):
-    """Reflect on the chat history and update the command memory collection."""
-    
-    if not store:
-        return {"messages": [SystemMessage(content="Error: No store provided in configuration.")]}
-    
-    # Get the user ID from the config
-    configurable = Configuration.from_runnable_config(config)
-    user_id = configurable.user_id
-
-    # Define the namespace for the memories
-    namespace = ("command", user_id)
-
-    # Retrieve the most recent memories for context
-    existing_items = store.search(namespace)
-
-    # Format the existing memories for the Trustcall extractor
-    tool_name = "Command"
-    existing_memories = ([(existing_item.key, tool_name, existing_item.value)
-                          for existing_item in existing_items]
-                          if existing_items
-                          else None
-                        )
-
-    # Format the instruction with current time
-    TRUSTCALL_INSTRUCTION_FORMATTED = TRUSTCALL_INSTRUCTION.format(
-        time=datetime.now().isoformat()
-    )
-    updated_messages = list(merge_message_runs(
-        messages=[SystemMessage(content=TRUSTCALL_INSTRUCTION_FORMATTED)] + state["messages"][:-1]
-    ))
-
-    # Initialize the spy for visibility into the tool calls made by Trustcall
-    spy = Spy()
-    
-    # Create the Trustcall extractor for updating the command
-    command_extractor = create_extractor(
-        model,
-        tools=[Command],
-        tool_choice="Command",
-        enable_inserts=True
-    ).with_listeners(on_end=spy)
-
-    # Invoke the extractor
-    result = command_extractor.invoke({"messages": updated_messages, 
-                                     "existing": existing_memories})
-
-    # Save the memories from Trustcall to the store
-    for r, rmeta in zip(result["responses"], result["response_metadata"]):
-        store.put(namespace,
-                  rmeta.get("json_doc_id", str(uuid.uuid4())),
-                  r.model_dump(mode="json"),
-            )
-    tool_calls = state['messages'][-1].tool_calls
-    # Extract the changes made by Trustcall and add them to the ToolMessage
-    command_update_msg = extract_tool_info(spy.called_tools, "Command")
-    return {"messages": [{"role": "tool", "content": command_update_msg, "tool_call_id":tool_calls[0]['id']}]}
 
 def update_todos(state: MessagesState, config: RunnableConfig, store: Optional[BaseStore], model: BaseChatModel) -> Dict:
     """Main function to handle todo updates."""
@@ -107,25 +49,18 @@ def update_todos(state: MessagesState, config: RunnableConfig, store: Optional[B
         raise
 
 def update_instructions(state: MessagesState, config: RunnableConfig, store: Optional[BaseStore], model: BaseChatModel):
-    """Reflect on the chat history and update the instructions memory collection."""
-    
+    """Update the instructions memory collection."""
     if not store:
         return {"messages": [SystemMessage(content="Error: No store provided in configuration.")]}
     
-    # Get the user ID from the config
     configurable = Configuration.from_runnable_config(config)
     user_id = configurable.user_id
-    
     namespace = ("instructions", user_id)
 
     existing_memory = store.get(namespace, "user_instructions")
-        
-    # Format the memory in the system prompt
-    system_msg = CREATE_INSTRUCTIONS.format(
-        current_instructions=existing_memory.value if existing_memory else None
-    )
+    
     new_memory = model.invoke(
-        [SystemMessage(content=system_msg)] + 
+        [SystemMessage(content="Please update the instructions based on the conversation")] + 
         state['messages'][:-1] + 
         [HumanMessage(content="Please update the instructions based on the conversation")]
     )

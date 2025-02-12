@@ -1,20 +1,6 @@
 from datetime import datetime
-from typing import Literal, Optional, List
+from typing import Optional, List
 from pydantic import BaseModel, Field
-
-class Command(BaseModel):
-    """This is the command of the user you are chatting with"""
-    name: Optional[str] = Field(description="The user's name", default="Jack")
-    location: Optional[str] = Field(description="The user's location", default="London")
-    job: Optional[str] = Field(description="The user's job", default="Chairman")
-    connections: list[str] = Field(
-        description="Business connections of the user, such as CEO, CMO, CFO, etc.",
-        default_factory=list
-    )
-    interests: list[str] = Field(
-        description="Buesiness interests that the user has", 
-        default_factory=list
-    )
 
 class ToDo(BaseModel):
     """Todo item information."""
