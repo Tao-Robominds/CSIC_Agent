@@ -168,3 +168,4 @@ storage/messages/
 
 # Environment
 .venv/.env
+.env
