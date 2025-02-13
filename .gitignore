@@ -169,3 +169,8 @@ storage/messages/
 # Environment
 .venv/.env
 .env
+
+# LangGraph API files
+.langgraph_api/
+.langgraph_api/*
+.DS_Store
