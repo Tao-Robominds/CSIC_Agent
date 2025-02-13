@@ -12,7 +12,7 @@ class CAgentConfig:
     api_key: str
     title: str
     url: str = "http://api.dify.ai.mh5.uk:8080/v1/chat-messages"
-    user: str = "Jack"
+    user: str = "CSIC"
 
 # Predefined configurations for different C-level roles
 AGENT_CONFIGS = {

@@ -37,7 +37,7 @@ def redis_store():
 def config():
     return {
         "configurable": {
-            "user_id": "Jack"
+            "user_id": "CSIC"
         }
     }
 

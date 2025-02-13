@@ -67,7 +67,7 @@ class PanelAdminAgent:
             "query": query,
             "response_mode": "blocking",
             "conversation_id": conversation_id,
-            "user": "Jack"
+            "user": "CSIC"
         }
 
         response = requests.post(url, headers=headers, data=json.dumps(data))

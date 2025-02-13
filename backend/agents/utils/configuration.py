@@ -6,10 +6,20 @@ from langchain_core.runnables import RunnableConfig
 from typing_extensions import Annotated
 from dataclasses import dataclass
 
+from enum import Enum
+
+class SearchAPI(Enum):
+    PERPLEXITY = "perplexity"
+    TAVILY = "tavily"
+
 @dataclass(kw_only=True)
 class Configuration:
     """The configurable fields for the chatbot."""
-    user_id: str = "Jack"
+    user_id: str = "CSIC"
+    """The configurable fields for the research assistant."""
+    max_web_research_loops: int = 3
+    local_llm: str = "deepseek-r1:14b"
+    search_api: SearchAPI = SearchAPI.TAVILY  # Default to TAVILY
 
     @classmethod
     def from_runnable_config(
