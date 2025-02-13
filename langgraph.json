@@ -1,7 +1,8 @@
 {
   "dockerfile_lines": [],
   "graphs": {
-    "panel_master": "./backend/workflows/panel_master.py:graph"
+    "panel_master": "./backend/workflows/panel_master.py:graph",
+    "deep_researcher": "./backend/workflows/deep_researcher.py:graph"
   },
   "env": "./.env",
   "python_version": "3.12",
