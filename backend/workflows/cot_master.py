@@ -11,20 +11,20 @@ from backend.agents.csic_agent import CSICAgent
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 class MessagesState(TypedDict):
-    messages: list
+    message: str
 
 def run_panel_discussions(state: MessagesState, config: RunnableConfig):
     """Initialize panel discussion process by reformulating the query."""
     # Get the user's query as plain text
-    query = str(state['messages'][-1])
+    query = state['message']
     
     # Prompt to reformulate the query
     reformulation_prompt = """You are an expert at breaking down questions into clear, researchable problems.
     Your task is to reformulate the given query into a clear problem statement that can be discussed by a panel of engineers.
     
     Please ensure the reformulation:
-    1. Identifies the core technical question or challenge
-    2. Frames it in a way that invites detailed technical discussion
+    1. Identifies the core question or challenge
+    2. Frames it in a way that invites detailed discussion
     3. Makes any implicit assumptions explicit
     4. Is clear and actionable
     
@@ -41,21 +41,18 @@ def run_panel_discussions(state: MessagesState, config: RunnableConfig):
     reformulated_query = response.content
     
     return {
-        "messages": [
-            f"Starting engineering panel discussion for the following problem:\n{reformulated_query}",
-            reformulated_query
-        ]
+        "message": reformulated_query
     }
 
 def run_project_manager(state: MessagesState, config: dict) -> MessagesState:
     """Handle Project Manager's response."""
-    query = str(state['messages'][-1])
+    query = state['message']
     
     try:
         agent = CSICAgent.create("PROJECT_MANAGER", "system", query)
         response = agent.actor()
         return {
-            "messages": state['messages'] + [f"Project Manager: {response}"]
+            "message": f"Project Manager: {response}"
         }
     except Exception as e:
         print(f"Project Manager Error: {str(e)}")
@@ -63,13 +60,13 @@ def run_project_manager(state: MessagesState, config: dict) -> MessagesState:
 
 def run_senior_engineer(state: MessagesState, config: dict) -> MessagesState:
     """Handle Senior Engineer's response."""
-    query = str(state['messages'][-1])
+    query = state['message']
     
     try:
         agent = CSICAgent.create("SENIOR_ENGINEER", "system", query)
         response = agent.actor()
         return {
-            "messages": state['messages'] + [f"Senior Engineer: {response}"]
+            "message": f"Senior Engineer: {response}"
         }
     except Exception as e:
         print(f"Senior Engineer Error: {str(e)}")
@@ -77,13 +74,13 @@ def run_senior_engineer(state: MessagesState, config: dict) -> MessagesState:
 
 def run_principal_engineer(state: MessagesState, config: dict) -> MessagesState:
     """Handle Principal Engineer's response."""
-    query = str(state['messages'][-1])
+    query = state['message']
     
     try:
         agent = CSICAgent.create("PRINCIPAL_ENGINEER", "system", query)
         response = agent.actor()
         return {
-            "messages": state['messages'] + [f"Principal Engineer: {response}"]
+            "message": f"Principal Engineer: {response}"
         }
     except Exception as e:
         print(f"Principal Engineer Error: {str(e)}")
@@ -91,14 +88,8 @@ def run_principal_engineer(state: MessagesState, config: dict) -> MessagesState:
 
 def summarize_discussion(state: MessagesState, config: RunnableConfig):
     """Generate final summary of the panel discussion."""
-    # Get all responses
-    responses = [msg for msg in state['messages'] 
-                if any(role in str(msg) for role in 
-                    ["Project Manager:", "Senior Engineer:", "Principal Engineer:"])]
+    discussion_text = state['message']
     
-    if not responses:
-        return state
-        
     summary_prompt = """Analyze and summarize the engineering panel discussion.
     Focus on:
     1. Key technical insights
@@ -110,20 +101,14 @@ def summarize_discussion(state: MessagesState, config: RunnableConfig):
     {discussion}
     """
     
-    discussion_text = "\n\n".join(responses)
-    
     response = model.invoke([
         SystemMessage(content=summary_prompt.format(discussion=discussion_text)),
         HumanMessage(content=discussion_text)
     ])
     
     return {
-        "messages": state['messages'] + [f"Summary: {response.content}"]
+        "message": f"Summary: {response.content}"
     }
-
-def route_summary(state: MessagesState, config: RunnableConfig) -> Literal[END]:
-    """Route to end after summary."""
-    return END
 
 # Create the graph
 builder = StateGraph(MessagesState, config_schema=configuration.Configuration)
@@ -145,7 +130,6 @@ builder.add_edge("run_panel", "principal_engineer_response")
 builder.add_edge("project_manager_response", "summarize_panel")
 builder.add_edge("senior_engineer_response", "summarize_panel")
 builder.add_edge("principal_engineer_response", "summarize_panel")
-# End after summary
 builder.add_edge("summarize_panel", END)
 
 # Compile the graph
