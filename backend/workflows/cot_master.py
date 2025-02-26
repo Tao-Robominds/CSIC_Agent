@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
@@ -24,6 +24,9 @@ Your task is to:
 4. Propose follow-up questions for the panel
 
 Based on the discussion so far, what aspects need deeper investigation?"""
+
+class MessagesState(TypedDict):
+    messages: list
 
 def run_panel_discussions(state: MessagesState, config: RunnableConfig):
     """Initialize panel discussion process by reformulating the query."""
@@ -59,29 +62,56 @@ def run_panel_discussions(state: MessagesState, config: RunnableConfig):
         ]
     }
 
-def run_project_manager(state: MessagesState, config: RunnableConfig):
+def run_project_manager(state: MessagesState, config: dict) -> MessagesState:
     """Handle Project Manager's response."""
-    agent = CSICAgent.create("PROJECT_MANAGER", "system", state['messages'][-1].content)
-    response = agent.actor()
-    return {"messages": state['messages'] + [AIMessage(content=f"Project Manager: {response}")]}
+    # Get just the latest message content as text
+    current_query = state['messages'][-1].content if isinstance(state['messages'][-1], HumanMessage) else str(state['messages'][-1])
+    
+    try:
+        agent = CSICAgent.create("PROJECT_MANAGER", "system", current_query)
+        response = agent.actor()
+        
+        # Return updated state with new message
+        return {
+            "messages": state['messages'] + [f"Project Manager: {response}"]
+        }
+    except Exception as e:
+        print(f"Project Manager Error: {str(e)}")
+        return state
 
-def run_senior_engineer(state: MessagesState, config: RunnableConfig):
+def run_senior_engineer(state: MessagesState, config: dict) -> MessagesState:
     """Handle Senior Engineer's response."""
-    context = "\n".join([msg.content for msg in state['messages'] if isinstance(msg, AIMessage)])
-    request = f"{state['messages'][-1].content}\n\nPrevious discussion:\n{context}"
+    # Get just the latest message content as text
+    current_query = state['messages'][-1].content if isinstance(state['messages'][-1], HumanMessage) else str(state['messages'][-1])
     
-    agent = CSICAgent.create("SENIOR_ENGINEER", "system", request)
-    response = agent.actor()
-    return {"messages": state['messages'] + [AIMessage(content=f"Senior Engineer: {response}")]}
+    try:
+        agent = CSICAgent.create("SENIOR_ENGINEER", "system", current_query)
+        response = agent.actor()
+        
+        # Return updated state with new message
+        return {
+            "messages": state['messages'] + [f"Senior Engineer: {response}"]
+        }
+    except Exception as e:
+        print(f"Senior Engineer Error: {str(e)}")
+        return state
 
-def run_principal_engineer(state: MessagesState, config: RunnableConfig):
+def run_principal_engineer(state: MessagesState, config: dict) -> MessagesState:
     """Handle Principal Engineer's response."""
-    context = "\n".join([msg.content for msg in state['messages'] if isinstance(msg, AIMessage)])
-    request = f"{state['messages'][-1].content}\n\nPrevious discussion:\n{context}"
+    # Get just the latest message content as text
+    current_query = state['messages'][-1].content if isinstance(state['messages'][-1], HumanMessage) else str(state['messages'][-1])
     
-    agent = CSICAgent.create("PRINCIPAL_ENGINEER", "system", request)
-    response = agent.actor()
-    return {"messages": state['messages'] + [AIMessage(content=f"Principal Engineer: {response}")]}
+    try:
+        agent = CSICAgent.create("PRINCIPAL_ENGINEER", "system", current_query)
+        response = agent.actor()
+        
+        # Return updated state with new message
+        return {
+            "messages": state['messages'] + [f"Principal Engineer: {response}"]
+        }
+    except Exception as e:
+        print(f"Principal Engineer Error: {str(e)}")
+        return state
 
 def summarize_discussion(state: MessagesState, config: RunnableConfig):
     """Generate final summary of the panel discussion."""
