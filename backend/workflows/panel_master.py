@@ -7,130 +7,41 @@ from langgraph.graph import StateGraph, MessagesState, START, END
 from langgraph.store.base import BaseStore
 
 import backend.agents.utils.configuration as configuration
-from backend.agents.utils.update import update_todos, update_instructions
 from backend.agents.prompts.panel_master_prompts import MODEL_SYSTEM_MESSAGE
-from backend.agents.utils.schemas import ToDo
 from backend.agents.c_agent import CAgent
 from backend.agents.panel_admin import PanelAdminAgent
+from backend.agents.evaluator_agent import EvaluatorAgent
 from backend.components.discussion_summarizer import DiscussionSummarizer
 from langchain_core.messages import HumanMessage
-from backend.store.redis_store import RedisStore
-from backend.store.redis_config import get_redis_config
 
-# Initialize Redis store
-redis_config = get_redis_config()
-store = RedisStore(**redis_config)
-
-class UpdateMemory(TypedDict):
-    """ Decision on what memory type to update """
-    update_type: Literal['todo', 'instructions']
-
-model = ChatOpenAI(model="gpt-4o", temperature=0)
+model = ChatOpenAI(model="gpt-4", temperature=0)
 
 def panel_master(state: MessagesState, config: RunnableConfig):
-    """Load memories from the store and use them to personalize the chatbot's response."""
-    
-    # Check for panel discussion request first
+    """Process user requests and handle panel discussions."""
     message = state['messages'][-1]
-    if isinstance(message, HumanMessage):
-        msg_lower = message.content.lower()
-        if "run panel discussion" in msg_lower:
-            configurable = configuration.Configuration.from_runnable_config(config)
-            user_id = configurable.user_id
-            
-            namespace = ("todo", user_id)
-            todos = store.search(namespace)
-            active_todos = [todo for todo in todos if todo.value.get('status') != 'Done']
-            
-            if not active_todos:
-                return {"messages": [AIMessage(content="No active todos found. Please add a todo item first.")]}
-            
-            return {"messages": []}  # Return empty response to let routing handle it
     
-    # Get the user ID from the config
-    configurable = configuration.Configuration.from_runnable_config(config)
-    user_id = configurable.user_id
-
-    # Retrieve todo items
-    namespace = ("todo", user_id)
-    memories = store.search(namespace)
-    todo = "\n".join(f"{mem.value}" for mem in memories)
-
-    # Retrieve custom instructions
-    namespace = ("instructions", user_id)
-    memories = store.search(namespace)
-    instructions = memories[0].value if memories else ""
+    # Format the system message
+    system_msg = MODEL_SYSTEM_MESSAGE
     
-    # Format the system message with current context
-    system_msg = MODEL_SYSTEM_MESSAGE.format(
-        todo=todo, 
-        instructions=instructions
-    )
-
-    # Respond using memory and chat history
-    response = model.bind_tools([UpdateMemory], parallel_tool_calls=False).invoke(
+    # Respond using chat history
+    response = model.invoke(
         [SystemMessage(content=system_msg)]+state["messages"]
     )
 
     return {"messages": [response]}
 
-def route_message(state: MessagesState, config: RunnableConfig) -> Literal[END, "update_todos", "update_instructions", "run_panel"]: # type: ignore
-    """Route messages to appropriate handlers."""
-    message = state['messages'][-1]
-    
-    if isinstance(message, HumanMessage):
-        msg_lower = message.content.lower()
-        if "run panel discussion" in msg_lower:
-            return "run_panel"
-    
-    if len(message.tool_calls) == 0:
-        return END
-    else:
-        tool_call = message.tool_calls[0]
-        if tool_call['args']['update_type'] == "todo":
-            return "update_todos"
-        elif tool_call['args']['update_type'] == "instructions":
-            return "update_instructions"
-        else:
-            return END
+def route_message(state: MessagesState, config: RunnableConfig) -> Literal["run_panel"]: # type: ignore
+    """Always route to panel discussion."""
+    return "run_panel"
 
-# Add new node function for panel discussions
 def run_panel_discussions(state: MessagesState, config: RunnableConfig):
     """Initialize panel discussion process."""
-    # Get the user ID from the config
-    configurable = configuration.Configuration.from_runnable_config(config)
-    user_id = configurable.user_id
+    # Get the inquiry from the last human message
+    inquiry = state['messages'][-1].content
     
-    # Get active todos
-    namespace = ("todo", user_id)
-    todos = store.search(namespace)
-    active_todos = [todo for todo in todos if todo.value.get('status') != 'Done']
-    
-    if not active_todos:
-        return {"messages": [AIMessage(content="No active todos found. Please add a todo item first.")]}
-    
-    # Get the command text to check if a specific todo number was requested
-    command = state['messages'][-1].content.lower()
-    selected_index = None
-    
-    # Check if a specific todo number was mentioned
-    for i in range(len(active_todos)):
-        if f"run panel discussion {i+1}" in command:
-            selected_index = i
-            break
-    
-    # If no specific todo was requested, use the first one
-    if selected_index is None:
-        selected_index = 0
-    
-    selected_todo = active_todos[selected_index]
-    inquiry = selected_todo.value.get('task', '')
-    
-    # Store the selected todo key in the messages for later use
     return {
         "messages": [
-            AIMessage(content=f"Selected todo key: {selected_todo.key}"),
-            AIMessage(content=f"Starting panel discussion for todo:\n{inquiry}"),
+            AIMessage(content=f"Starting panel discussion for inquiry:\n{inquiry}"),
             HumanMessage(content=inquiry)
         ]
     }
@@ -164,6 +75,10 @@ def run_panel_admin(state: MessagesState, config: RunnableConfig):
     # Format the response for better readability
     try:
         import json
+        # Add null check before parsing
+        if not response:
+            return {"messages": [AIMessage(content="Error: No response received from Panel Admin")]}
+            
         panel_info = json.loads(response)
         formatted_response = (
             f"Panel Discussion Setup:\n\n"
@@ -171,9 +86,9 @@ def run_panel_admin(state: MessagesState, config: RunnableConfig):
             f"Selected Participants: {', '.join(panel_info['selected_participants'])}\n\n"
             f"Instructions: {panel_info['instructions']}"
         )
-    except json.JSONDecodeError:
-        # Fallback in case response is not valid JSON
-        formatted_response = response
+    except (json.JSONDecodeError, TypeError) as e:
+        # Improved error handling
+        formatted_response = f"Error processing panel admin response: {str(e)}\nRaw response: {response}"
         
     return {"messages": [AIMessage(content=formatted_response)]}
 
@@ -202,13 +117,7 @@ def run_cmo(state: MessagesState, config: RunnableConfig):
     return {"messages": [AIMessage(content=f"CMO: {response}")]}
 
 def summarize_discussion(state: MessagesState, config: RunnableConfig):
-    # Get the selected todo key from the first message
     messages = state['messages']
-    selected_todo_key = None
-    for msg in messages:
-        if isinstance(msg, AIMessage) and msg.content.startswith("Selected todo key:"):
-            selected_todo_key = msg.content.split(": ")[1].strip()
-            break
     
     # Get the original inquiry
     inquiry = next((msg.content for msg in messages if isinstance(msg, HumanMessage)), "")
@@ -235,75 +144,150 @@ def summarize_discussion(state: MessagesState, config: RunnableConfig):
     if all(exec_responses.values()):
         conversation_history = []
         for role, content in exec_responses.items():
-            if not content.startswith("Selected todo key:"):  # Skip the key message
-                conversation_history.append({
-                    "role": role,
-                    "content": content
-                })
+            conversation_history.append({
+                "role": role,
+                "content": content
+            })
         
         summarizer = DiscussionSummarizer(inquiry, conversation_history)
         summary = summarizer.generate_summary()
         
-        # Get the user ID from the config and update the todo item
-        configurable = configuration.Configuration.from_runnable_config(config)
-        user_id = configurable.user_id
-        namespace = ("todo", user_id)
-        
-        # Update the todo with the summary and mark as done
-        if selected_todo_key:
-            todo = store.get(namespace, selected_todo_key)
-            if todo:
-                updated_todo = {
-                    **todo.value,
-                    'status': 'Done',
-                    'solution': summary
-                }
-                store.put(namespace, selected_todo_key, updated_todo)
-        
-        return {"messages": [AIMessage(content=f"\n\n{summary}")]}
+        return {
+            "messages": [
+                AIMessage(content=f"\n\n{summary}")
+            ]
+        }
     else:
         missing = [role for role, resp in exec_responses.items() if resp is None]
         return {"messages": [AIMessage(content=f"⏳ Waiting for responses from: {', '.join(missing)}")]}
 
+def evaluate_summary(state: MessagesState, config: RunnableConfig):
+    """Evaluate the panel discussion summary."""
+    messages = state['messages']
+    
+    # Get or initialize the loop counter
+    loop_count = state.get("loop_count", 0)
+    
+    # Check if we've exceeded maximum loops (e.g., 3 attempts)
+    MAX_LOOPS = 3
+    if loop_count >= MAX_LOOPS:
+        return {
+            "messages": [
+                AIMessage(content="⚠️ Maximum iteration limit reached. Final summary:\n\n" + 
+                         next((msg.content for msg in reversed(messages) 
+                              if isinstance(msg, AIMessage) 
+                              and not msg.content.startswith("Starting panel discussion")), ""))
+            ]
+        }
+    
+    # Increment loop counter
+    state["loop_count"] = loop_count + 1
+    
+    # Get the original task/inquiry
+    inquiry = next((msg.content for msg in messages if isinstance(msg, HumanMessage)), "")
+    
+    # Get the summary from the last non-key AIMessage
+    summary = next((msg.content for msg in reversed(messages) 
+                   if isinstance(msg, AIMessage) 
+                   and not msg.content.startswith("Starting panel discussion")), "")
+    
+    # Force re-evaluation if we don't have all executive responses
+    exec_responses = {
+        "CEO": False,
+        "CFO": False,
+        "CMO": False
+    }
+    
+    for msg in messages:
+        if isinstance(msg, AIMessage):
+            content = msg.content
+            if content.startswith("CEO:"):
+                exec_responses["CEO"] = True
+            elif content.startswith("CFO:"):
+                exec_responses["CFO"] = True
+            elif content.startswith("CMO:"):
+                exec_responses["CMO"] = True
+    
+    # If we're missing any executive responses, immediately return for re-evaluation
+    if not all(exec_responses.values()):
+        missing = [role for role, present in exec_responses.items() if not present]
+        return {
+            "messages": [
+                AIMessage(content=f"⚠️ Summary needs improvement (Attempt {loop_count + 1}/{MAX_LOOPS}): Missing responses from {', '.join(missing)}. Restarting panel discussion.")
+            ]
+        }
+    
+    # Create evaluator agent
+    configurable = configuration.Configuration.from_runnable_config(config)
+    user_id = configurable.user_id
+    evaluator = EvaluatorAgent.create(user_id, inquiry, summary)
+    
+    # Get evaluation results
+    evaluation = evaluator.actor()
+    
+    # Force re-evaluation for any of these conditions
+    if (len(summary.split()) < 50 or  # Too short
+        "CEO" not in summary or      # Missing CEO perspective
+        "CFO" not in summary or      # Missing CFO perspective
+        "CMO" not in summary or      # Missing CMO perspective
+        "recommend" not in summary.lower() or  # No clear recommendation
+        "action" not in summary.lower()):     # No clear action items
+        
+        return {
+            "messages": [
+                AIMessage(content=f"⚠️ Summary needs improvement (Attempt {loop_count + 1}/{MAX_LOOPS}): Missing key components or insufficient detail. Restarting panel discussion.")
+            ]
+        }
+    
+    # If we made it here, the summary passed all checks
+    return {
+        "messages": [
+            AIMessage(content="✅ Summary evaluation passed all criteria.")
+        ]
+    }
+
+def route_after_evaluation(state: MessagesState, config: RunnableConfig) -> Literal["panel_admin", END]:
+    """Route based on evaluation results."""
+    message = state['messages'][-1]
+    if not isinstance(message, AIMessage):
+        return END
+        
+    # If the message contains "needs improvement", route back to panel_admin
+    if "needs improvement" in message.content:
+        return "panel_admin"
+    # If the message indicates success, end the workflow
+    elif "✅ Summary evaluation passed" in message.content:
+        return END
+    # Default case - end the workflow
+    return END
+
 # Create the graph + all nodes
 builder = StateGraph(MessagesState, config_schema=configuration.Configuration)
 
-# Define the simplified flow
+# Define the flow
 builder.add_node("panel_master", panel_master)
-builder.add_node(
-    "update_todos", 
-    lambda state, config: update_todos(state, config, store, model)
-)
-builder.add_node(
-    "update_instructions", 
-    lambda state, config: update_instructions(state, config, store, model)
-)
+builder.add_node("run_panel", run_panel_discussions)
+builder.add_node("panel_admin", run_panel_admin)
+builder.add_node("ceo_response", run_ceo)
+builder.add_node("cfo_response", run_cfo)
+builder.add_node("cmo_response", run_cmo)
+builder.add_node("summarize_panel", summarize_discussion)
+builder.add_node("evaluate_summary", evaluate_summary)
 
-# Add panel discussion nodes
-builder.add_node("run_panel", lambda state, config: run_panel_discussions(state, config))
-builder.add_node("panel_admin", lambda state, config: run_panel_admin(state, config))
-builder.add_node("ceo_response", lambda state, config: run_ceo(state, config))
-builder.add_node("cfo_response", lambda state, config: run_cfo(state, config))
-builder.add_node("cmo_response", lambda state, config: run_cmo(state, config))
-builder.add_node("summarize_panel", lambda state, config: summarize_discussion(state, config))
-
-# Define the main flow
+# Define the flow - always go through run_panel
 builder.add_edge(START, "panel_master")
 builder.add_conditional_edges("panel_master", route_message)
-builder.add_edge("update_todos", "panel_master")
-builder.add_edge("update_instructions", "panel_master")
 
 # Define panel discussion flow
 builder.add_edge("run_panel", "panel_admin")
-# After panel_admin, branch out to all executives
 builder.add_edge("panel_admin", "ceo_response")
 builder.add_edge("panel_admin", "cfo_response")
 builder.add_edge("panel_admin", "cmo_response")
-# All executive responses go to summarize
 builder.add_edge("ceo_response", "summarize_panel")
 builder.add_edge("cfo_response", "summarize_panel")
 builder.add_edge("cmo_response", "summarize_panel")
-builder.add_edge("summarize_panel", END)
+builder.add_edge("summarize_panel", "evaluate_summary")
+builder.add_conditional_edges("evaluate_summary", route_after_evaluation)
 
 # Compile the graph
 graph = builder.compile()

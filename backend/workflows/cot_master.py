@@ -12,6 +12,7 @@ model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 class MessagesState(TypedDict):
     message: str
+    responses: dict  # Track all agent responses
 
 def run_panel_discussions(state: MessagesState, config: RunnableConfig):
     """Initialize panel discussion process by reformulating the query."""
@@ -41,18 +42,26 @@ def run_panel_discussions(state: MessagesState, config: RunnableConfig):
     reformulated_query = response.content
     
     return {
-        "message": reformulated_query
+        "message": reformulated_query,
+        "responses": {
+            "Project Manager": None,
+            "Senior Engineer": None,
+            "Principal Engineer": None
+        }  # Initialize empty responses dict with None values
     }
 
 def run_project_manager(state: MessagesState, config: dict) -> MessagesState:
     """Handle Project Manager's response."""
     query = state['message']
+    responses = state.get('responses', {})
     
     try:
         agent = CSICAgent.create("PROJECT_MANAGER", "system", query)
         response = agent.actor()
+        responses["Project Manager"] = response
         return {
-            "message": f"Project Manager: {response}"
+            "message": state['message'],
+            "responses": responses
         }
     except Exception as e:
         print(f"Project Manager Error: {str(e)}")
@@ -61,12 +70,15 @@ def run_project_manager(state: MessagesState, config: dict) -> MessagesState:
 def run_senior_engineer(state: MessagesState, config: dict) -> MessagesState:
     """Handle Senior Engineer's response."""
     query = state['message']
+    responses = state.get('responses', {})
     
     try:
         agent = CSICAgent.create("SENIOR_ENGINEER", "system", query)
         response = agent.actor()
+        responses["Senior Engineer"] = response
         return {
-            "message": f"Senior Engineer: {response}"
+            "message": state['message'],
+            "responses": responses
         }
     except Exception as e:
         print(f"Senior Engineer Error: {str(e)}")
@@ -75,12 +87,15 @@ def run_senior_engineer(state: MessagesState, config: dict) -> MessagesState:
 def run_principal_engineer(state: MessagesState, config: dict) -> MessagesState:
     """Handle Principal Engineer's response."""
     query = state['message']
+    responses = state.get('responses', {})
     
     try:
         agent = CSICAgent.create("PRINCIPAL_ENGINEER", "system", query)
         response = agent.actor()
+        responses["Principal Engineer"] = response
         return {
-            "message": f"Principal Engineer: {response}"
+            "message": state['message'],
+            "responses": responses
         }
     except Exception as e:
         print(f"Principal Engineer Error: {str(e)}")
@@ -88,7 +103,19 @@ def run_principal_engineer(state: MessagesState, config: dict) -> MessagesState:
 
 def summarize_discussion(state: MessagesState, config: RunnableConfig):
     """Generate final summary of the panel discussion."""
-    discussion_text = state['message']
+    responses = state.get('responses', {})
+    
+    # Check if we have all responses
+    required_roles = {"Project Manager", "Senior Engineer", "Principal Engineer"}
+    if not all(role in responses for role in required_roles):
+        missing = [role for role in required_roles if role not in responses]
+        return {
+            "message": f"⏳ Waiting for responses from: {', '.join(missing)}",
+            "responses": responses
+        }
+    
+    # Combine all responses into a discussion text
+    discussion = "\n\n".join(f"{role}: {response}" for role, response in responses.items())
     
     summary_prompt = """Analyze and summarize the engineering panel discussion.
     Focus on:
@@ -102,12 +129,13 @@ def summarize_discussion(state: MessagesState, config: RunnableConfig):
     """
     
     response = model.invoke([
-        SystemMessage(content=summary_prompt.format(discussion=discussion_text)),
-        HumanMessage(content=discussion_text)
+        SystemMessage(content=summary_prompt.format(discussion=discussion)),
+        HumanMessage(content=discussion)
     ])
     
     return {
-        "message": f"Summary: {response.content}"
+        "message": f"Summary: {response.content}",
+        "responses": responses
     }
 
 # Create the graph
@@ -122,14 +150,18 @@ builder.add_node("summarize_panel", summarize_discussion)
 
 # Define the flow
 builder.add_edge(START, "run_panel")
+
 # Panel members respond in parallel after query reformulation
 builder.add_edge("run_panel", "project_manager_response")
 builder.add_edge("run_panel", "senior_engineer_response")
 builder.add_edge("run_panel", "principal_engineer_response")
-# All responses go to summary
-builder.add_edge("project_manager_response", "summarize_panel")
-builder.add_edge("senior_engineer_response", "summarize_panel")
-builder.add_edge("principal_engineer_response", "summarize_panel")
+
+# Create a join to wait for all responses
+builder.add_join("join_responses", 
+    ["project_manager_response", "senior_engineer_response", "principal_engineer_response"],
+    "summarize_panel"
+)
+
 builder.add_edge("summarize_panel", END)
 
 # Compile the graph
