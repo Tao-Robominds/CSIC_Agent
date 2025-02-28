@@ -8,6 +8,7 @@ from langgraph.graph import StateGraph, MessagesState, START, END
 
 import backend.agents.utils.configuration as configuration
 from backend.agents.c_agent import CAgent
+from backend.agents.csic_agent import CSICAgent
 from backend.agents.csic_panel_admin import PanelAdminAgent
 from backend.agents.evaluator_agent import EvaluatorAgent
 from backend.components.discussion_summarizer import DiscussionSummarizer
@@ -44,29 +45,23 @@ def run_panel_admin(state: MessagesState, config: RunnableConfig):
         
     return {"messages": [AIMessage(content=formatted_response)]}
 
-def run_ceo(state: MessagesState, config: RunnableConfig):
-    """Handle CEO's response."""
-    agent = CAgent.create("CEO", "system", state['messages'][-1].content)
+def run_project_manager(state: MessagesState, config: RunnableConfig):
+    """Handle Project Manager's response."""
+    agent = CSICAgent.create("PROJECT_MANAGER", "system", state['messages'][-1].content)
     response = agent.actor()
-    return {"messages": [AIMessage(content=f"CEO: {response}")]}
+    return {"messages": [AIMessage(content=f"Project Manager: {response}")]}
 
-def run_cfo(state: MessagesState, config: RunnableConfig):
-    """Handle CFO's response."""
-    context = "\n".join([msg.content for msg in state['messages'] if isinstance(msg, AIMessage)])
-    request = f"{state['messages'][-1].content}\n\nPrevious discussion:\n{context}"
-    
-    agent = CAgent.create("CFO", "system", request)
+def run_senior_engineer(state: MessagesState, config: RunnableConfig):
+    """Handle Senior Engineer's response."""
+    agent = CSICAgent.create("SENIOR_ENGINEER", "system", state['messages'][-1].content)
     response = agent.actor()
-    return {"messages": [AIMessage(content=f"CFO: {response}")]}
+    return {"messages": [AIMessage(content=f"Senior Engineer: {response}")]}
 
-def run_cmo(state: MessagesState, config: RunnableConfig):
-    """Handle CMO's response."""
-    context = "\n".join([msg.content for msg in state['messages'] if isinstance(msg, AIMessage)])
-    request = f"{state['messages'][-1].content}\n\nPrevious discussion:\n{context}"
-    
-    agent = CAgent.create("CMO", "system", request)
+def run_principal_engineer(state: MessagesState, config: RunnableConfig):
+    """Handle Principal Engineer's response."""
+    agent = CSICAgent.create("PRINCIPAL_ENGINEER", "system", state['messages'][-1].content)
     response = agent.actor()
-    return {"messages": [AIMessage(content=f"CMO: {response}")]}
+    return {"messages": [AIMessage(content=f"Principal Engineer: {response}")]}
 
 def summarize_discussion(state: MessagesState, config: RunnableConfig):
     messages = state['messages']
@@ -76,21 +71,21 @@ def summarize_discussion(state: MessagesState, config: RunnableConfig):
     
     # Wait for all executive responses
     exec_responses = {
-        "CEO": None,
-        "CFO": None,
-        "CMO": None
+        "PROJECT_MANAGER": None,
+        "SENIOR_ENGINEER": None,
+        "PRINCIPAL_ENGINEER": None
     }
     
     for msg in messages:
         if isinstance(msg, AIMessage):
             content = msg.content
             # Match responses to executives
-            if content.startswith("CEO:"):
-                exec_responses["CEO"] = content
-            elif content.startswith("CFO:"):
-                exec_responses["CFO"] = content
-            elif content.startswith("CMO:"):
-                exec_responses["CMO"] = content
+            if content.startswith("PROJECT_MANAGER:"):
+                exec_responses["PROJECT_MANAGER"] = content
+            elif content.startswith("SENIOR_ENGINEER:"):
+                exec_responses["SENIOR_ENGINEER"] = content
+            elif content.startswith("PRINCIPAL_ENGINEER:"):
+                exec_responses["PRINCIPAL_ENGINEER"] = content
     
     # Only proceed if we have all responses
     if all(exec_responses.values()):
@@ -145,20 +140,20 @@ def evaluate_summary(state: MessagesState, config: RunnableConfig):
     
     # Force re-evaluation if we don't have all executive responses
     exec_responses = {
-        "CEO": False,
-        "CFO": False,
-        "CMO": False
+        "PROJECT_MANAGER": False,
+        "SENIOR_ENGINEER": False,
+        "PRINCIPAL_ENGINEER": False
     }
     
     for msg in messages:
         if isinstance(msg, AIMessage):
             content = msg.content
-            if content.startswith("CEO:"):
-                exec_responses["CEO"] = True
-            elif content.startswith("CFO:"):
-                exec_responses["CFO"] = True
-            elif content.startswith("CMO:"):
-                exec_responses["CMO"] = True
+            if content.startswith("PROJECT_MANAGER:"):
+                exec_responses["PROJECT_MANAGER"] = True
+            elif content.startswith("SENIOR_ENGINEER:"):
+                exec_responses["SENIOR_ENGINEER"] = True
+            elif content.startswith("PRINCIPAL_ENGINEER:"):
+                exec_responses["PRINCIPAL_ENGINEER"] = True
     
     # If we're missing any executive responses, immediately return for re-evaluation
     if not all(exec_responses.values()):
@@ -179,9 +174,9 @@ def evaluate_summary(state: MessagesState, config: RunnableConfig):
     
     # Force re-evaluation for any of these conditions
     if (len(summary.split()) < 50 or  # Too short
-        "CEO" not in summary or      # Missing CEO perspective
-        "CFO" not in summary or      # Missing CFO perspective
-        "CMO" not in summary or      # Missing CMO perspective
+        "PROJECT_MANAGER" not in summary or      # Missing CEO perspective
+        "SENIOR_ENGINEER" not in summary or      # Missing CFO perspective
+        "PRINCIPAL_ENGINEER" not in summary or      # Missing CMO perspective
         "recommend" not in summary.lower() or  # No clear recommendation
         "action" not in summary.lower()):     # No clear action items
         
@@ -219,9 +214,9 @@ builder = StateGraph(MessagesState, config_schema=configuration.Configuration)
 # Add all nodes first
 builder.add_node("run_panel", run_panel_discussions)
 builder.add_node("panel_admin", run_panel_admin)
-builder.add_node("ceo_response", run_ceo)
-builder.add_node("cfo_response", run_cfo)
-builder.add_node("cmo_response", run_cmo)
+builder.add_node("project_manager_response", run_project_manager)
+builder.add_node("senior_engineer_response", run_senior_engineer)
+builder.add_node("principal_engineer_response", run_principal_engineer)
 builder.add_node("summarize_panel", summarize_discussion)
 builder.add_node("evaluate_summary", evaluate_summary)
 
@@ -232,14 +227,14 @@ builder.add_edge(START, "run_panel")
 builder.add_edge("run_panel", "panel_admin")
 
 # All responses follow panel_admin
-builder.add_edge("panel_admin", "ceo_response")
-builder.add_edge("panel_admin", "cfo_response")
-builder.add_edge("panel_admin", "cmo_response")
+builder.add_edge("panel_admin", "project_manager_response")
+builder.add_edge("panel_admin", "senior_engineer_response")
+builder.add_edge("panel_admin", "principal_engineer_response")
 
 # All responses go to summarize_panel
-builder.add_edge("ceo_response", "summarize_panel")
-builder.add_edge("cfo_response", "summarize_panel")
-builder.add_edge("cmo_response", "summarize_panel")
+builder.add_edge("project_manager_response", "summarize_panel")
+builder.add_edge("senior_engineer_response", "summarize_panel")
+builder.add_edge("principal_engineer_response", "summarize_panel")
 
 # Final evaluation flow
 builder.add_edge("summarize_panel", "evaluate_summary")
