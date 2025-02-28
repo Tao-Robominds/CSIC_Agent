@@ -1,24 +1,22 @@
 from typing import Literal, TypedDict
+import json
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import SystemMessage, AIMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, MessagesState, START, END
-from langgraph.store.base import BaseStore
 
 import backend.agents.utils.configuration as configuration
-from backend.agents.prompts.panel_master_prompts import MODEL_SYSTEM_MESSAGE
 from backend.agents.c_agent import CAgent
 from backend.agents.panel_admin import PanelAdminAgent
 from backend.agents.evaluator_agent import EvaluatorAgent
 from backend.components.discussion_summarizer import DiscussionSummarizer
 from langchain_core.messages import HumanMessage
 
-model = ChatOpenAI(model="gpt-4", temperature=0)
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 def run_panel_discussions(state: MessagesState, config: RunnableConfig):
     """Initialize panel discussion process."""
-    # Get the inquiry from the last human message
     inquiry = state['messages'][-1].content
     
     return {
@@ -28,27 +26,6 @@ def run_panel_discussions(state: MessagesState, config: RunnableConfig):
         ]
     }
 
-def route_after_ceo(state: MessagesState, config: RunnableConfig) -> str:
-    """Route to next node based on CEO's response dependencies."""
-    # Get the last message which should contain CEO's response
-    ceo_response = state['messages'][-1].content
-    
-    # Analyze dependencies in CEO's response
-    if "financial" in ceo_response.lower() or "budget" in ceo_response.lower():
-        return "cfo_response"
-    elif "marketing" in ceo_response.lower() or "market" in ceo_response.lower():
-        return "cmo_response"
-    return "summarize_panel"
-
-def route_after_cfo(state: MessagesState, config: RunnableConfig) -> str:
-    """Route to next node based on CFO's response dependencies."""
-    # Get the last message which should contain CFO's response
-    cfo_response = state['messages'][-1].content
-    
-    if "marketing" in cfo_response.lower() or "market" in cfo_response.lower():
-        return "cmo_response"
-    return "summarize_panel"
-
 def run_panel_admin(state: MessagesState, config: RunnableConfig):
     """Handle panel admin selection of participants."""
     admin = PanelAdminAgent(user_id="system", request=state['messages'][-1].content)
@@ -56,7 +33,6 @@ def run_panel_admin(state: MessagesState, config: RunnableConfig):
     
     # Format the response for better readability
     try:
-        import json
         # Add null check before parsing
         if not response:
             return {"messages": [AIMessage(content="Error: No response received from Panel Admin")]}
@@ -228,7 +204,7 @@ def evaluate_summary(state: MessagesState, config: RunnableConfig):
         ]
     }
 
-def route_after_evaluation(state: MessagesState, config: RunnableConfig) -> Literal["panel_admin", END]:
+def route_after_evaluation(state: MessagesState, config: RunnableConfig) -> Literal["panel_admin", END]: # type: ignore
     """Route based on evaluation results."""
     message = state['messages'][-1]
     if not isinstance(message, AIMessage):

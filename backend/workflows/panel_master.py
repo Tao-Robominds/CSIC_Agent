@@ -28,27 +28,6 @@ def run_panel_discussions(state: MessagesState, config: RunnableConfig):
         ]
     }
 
-def route_after_ceo(state: MessagesState, config: RunnableConfig) -> str:
-    """Route to next node based on CEO's response dependencies."""
-    # Get the last message which should contain CEO's response
-    ceo_response = state['messages'][-1].content
-    
-    # Analyze dependencies in CEO's response
-    if "financial" in ceo_response.lower() or "budget" in ceo_response.lower():
-        return "cfo_response"
-    elif "marketing" in ceo_response.lower() or "market" in ceo_response.lower():
-        return "cmo_response"
-    return "summarize_panel"
-
-def route_after_cfo(state: MessagesState, config: RunnableConfig) -> str:
-    """Route to next node based on CFO's response dependencies."""
-    # Get the last message which should contain CFO's response
-    cfo_response = state['messages'][-1].content
-    
-    if "marketing" in cfo_response.lower() or "market" in cfo_response.lower():
-        return "cmo_response"
-    return "summarize_panel"
-
 def run_panel_admin(state: MessagesState, config: RunnableConfig):
     """Handle panel admin selection of participants."""
     admin = PanelAdminAgent(user_id="system", request=state['messages'][-1].content)
