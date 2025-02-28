@@ -138,32 +138,7 @@ def evaluate_summary(state: MessagesState, config: RunnableConfig):
                    if isinstance(msg, AIMessage) 
                    and not msg.content.startswith("Starting panel discussion")), "")
     
-    # Force re-evaluation if we don't have all executive responses
-    exec_responses = {
-        "PROJECT_MANAGER": False,
-        "SENIOR_ENGINEER": False,
-        "PRINCIPAL_ENGINEER": False
-    }
-    
-    for msg in messages:
-        if isinstance(msg, AIMessage):
-            content = msg.content
-            if content.startswith("PROJECT_MANAGER:"):
-                exec_responses["PROJECT_MANAGER"] = True
-            elif content.startswith("SENIOR_ENGINEER:"):
-                exec_responses["SENIOR_ENGINEER"] = True
-            elif content.startswith("PRINCIPAL_ENGINEER:"):
-                exec_responses["PRINCIPAL_ENGINEER"] = True
-    
-    # If we're missing any executive responses, immediately return for re-evaluation
-    if not all(exec_responses.values()):
-        missing = [role for role, present in exec_responses.items() if not present]
-        return {
-            "messages": [
-                AIMessage(content=f"⚠️ Summary needs improvement (Attempt {loop_count + 1}/{MAX_LOOPS}): Missing responses from {', '.join(missing)}. Restarting panel discussion.")
-            ]
-        }
-    
+
     # Create evaluator agent
     configurable = configuration.Configuration.from_runnable_config(config)
     user_id = configurable.user_id
@@ -174,9 +149,6 @@ def evaluate_summary(state: MessagesState, config: RunnableConfig):
     
     # Force re-evaluation for any of these conditions
     if (len(summary.split()) < 50 or  # Too short
-        "PROJECT_MANAGER" not in summary or      # Missing CEO perspective
-        "SENIOR_ENGINEER" not in summary or      # Missing CFO perspective
-        "PRINCIPAL_ENGINEER" not in summary or      # Missing CMO perspective
         "recommend" not in summary.lower() or  # No clear recommendation
         "action" not in summary.lower()):     # No clear action items
         
@@ -189,7 +161,7 @@ def evaluate_summary(state: MessagesState, config: RunnableConfig):
     # If we made it here, the summary passed all checks
     return {
         "messages": [
-            AIMessage(content="✅ Summary evaluation passed all criteria.")
+            AIMessage(content="Summary evaluation passed all criteria.")
         ]
     }
 
@@ -203,7 +175,7 @@ def route_after_evaluation(state: MessagesState, config: RunnableConfig) -> Lite
     if "needs improvement" in message.content:
         return "panel_admin"
     # If the message indicates success, end the workflow
-    elif "✅ Summary evaluation passed" in message.content:
+    elif "Summary evaluation passed" in message.content:
         return END
     # Default case - end the workflow
     return END
