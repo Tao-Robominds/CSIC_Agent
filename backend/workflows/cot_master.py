@@ -156,12 +156,6 @@ builder.add_edge("run_panel", "project_manager_response")
 builder.add_edge("run_panel", "senior_engineer_response")
 builder.add_edge("run_panel", "principal_engineer_response")
 
-# Create a join to wait for all responses
-builder.add_join("join_responses", 
-    ["project_manager_response", "senior_engineer_response", "principal_engineer_response"],
-    "summarize_panel"
-)
-
 builder.add_edge("summarize_panel", END)
 
 # Compile the graph

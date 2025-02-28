@@ -39,17 +39,25 @@ def run_panel_admin(state: MessagesState, config: RunnableConfig):
         # Add null check before parsing
         if not response:
             return {"messages": [AIMessage(content="Error: No response received from Panel Admin")]}
-            
-        panel_info = json.loads(response)
+        
+        # Clean up the response by replacing semicolons with commas
+        cleaned_response = response.replace(";", ",")
+        panel_info = json.loads(cleaned_response)
+        
+        # Extract the relevant information
         formatted_response = (
             f"Panel Discussion Setup:\n\n"
-            f"Context: {panel_info['context']}\n\n"
-            f"Selected Participants: {', '.join(panel_info['selected_participants'])}\n\n"
-            f"Instructions: {panel_info['instructions']}"
+            f"Timestamp: {panel_info.get('timestamp', 'Not specified')}\n"
+            f"Selected Participants: {', '.join(panel_info.get('invited', []))}\n"
+            f"Inquiry: {panel_info.get('inquiry', 'Not specified')}\n"
         )
     except (json.JSONDecodeError, TypeError) as e:
-        # Improved error handling
-        formatted_response = f"Error processing panel admin response: {str(e)}\nRaw response: {response}"
+        # Improved error handling with original response
+        formatted_response = (
+            f"Error processing panel admin response: {str(e)}\n"
+            f"Raw response: {response}\n"
+            "Please check the panel admin's response format."
+        )
         
     return {"messages": [AIMessage(content=formatted_response)]}
 

@@ -8,7 +8,7 @@ from langgraph.graph import StateGraph, MessagesState, START, END
 
 import backend.agents.utils.configuration as configuration
 from backend.agents.c_agent import CAgent
-from backend.agents.panel_admin import PanelAdminAgent
+from backend.agents.csic_panel_admin import PanelAdminAgent
 from backend.agents.evaluator_agent import EvaluatorAgent
 from backend.components.discussion_summarizer import DiscussionSummarizer
 from langchain_core.messages import HumanMessage
@@ -21,32 +21,26 @@ def run_panel_discussions(state: MessagesState, config: RunnableConfig):
     
     return {
         "messages": [
-            AIMessage(content=f"Starting panel discussion for inquiry:\n{inquiry}"),
+            AIMessage(content=f"Panel discussion:\n{inquiry}"),
             HumanMessage(content=inquiry)
         ]
     }
 
 def run_panel_admin(state: MessagesState, config: RunnableConfig):
     """Handle panel admin selection of participants."""
-    admin = PanelAdminAgent(user_id="system", request=state['messages'][-1].content)
+    admin = PanelAdminAgent(user_id="CSIC", request=state['messages'][-1].content)
     response = admin.actor()
     
-    # Format the response for better readability
     try:
-        # Add null check before parsing
-        if not response:
-            return {"messages": [AIMessage(content="Error: No response received from Panel Admin")]}
-            
         panel_info = json.loads(response)
         formatted_response = (
             f"Panel Discussion Setup:\n\n"
-            f"Context: {panel_info['context']}\n\n"
-            f"Selected Participants: {', '.join(panel_info['selected_participants'])}\n\n"
-            f"Instructions: {panel_info['instructions']}"
+            f"Selected Participants: {', '.join(panel_info.get('invited', []))}\n"
+            f"Inquiry: {panel_info.get('inquiry', '')}\n"
+            f"Suggestions: {panel_info.get('suggestions', '')}"
         )
     except (json.JSONDecodeError, TypeError) as e:
-        # Improved error handling
-        formatted_response = f"Error processing panel admin response: {str(e)}\nRaw response: {response}"
+        formatted_response = f"Error: {str(e)}\nResponse: {response}"
         
     return {"messages": [AIMessage(content=formatted_response)]}
 
