@@ -10,7 +10,7 @@ import backend.agents.utils.configuration as configuration
 from backend.agents.csic_agent import CSICAgent
 from backend.agents.csic_panel_admin import PanelAdminAgent
 from backend.agents.evaluator_agent import EvaluatorAgent
-from backend.components.discussion_summarizer import DiscussionSummarizer
+from backend.components.summariser import Summariser
 from langchain_core.messages import HumanMessage
 
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0)

@@ -1,6 +1,6 @@
 from backend.components.gpt_parser import GPTComponent, GPTRequest
 
-class DiscussionSummarizer:
+class Summariser:
     SECTION_HEADERS = [
         'Panel Discussion Summary:',
         'Discussion Overview:',
