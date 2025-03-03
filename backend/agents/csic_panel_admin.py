@@ -36,8 +36,11 @@ class PanelAdminAgent:
             "user": self.user_id
         }
 
-        response = requests.post(url, headers=headers, data=json.dumps(data))
-        response_data = response.json()
-        result = response_data.get('answer', '')
-
-        return result
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=600)
+            response.raise_for_status()
+            response_data = response.json()
+            result = response_data.get('answer', '')
+            return result
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Request failed: {str(e)}")

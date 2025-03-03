@@ -10,7 +10,7 @@ class CSICAgentConfig:
     title: str
     url: str = "https://api.dify.ai/v1/workflows/run"
     user: str = "CSIC"
-    timeout: int = 180
+    timeout: int = 600
 
 # Predefined configurations for different engineering roles
 AGENT_CONFIGS = {

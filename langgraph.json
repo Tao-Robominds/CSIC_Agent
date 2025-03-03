@@ -1,7 +1,6 @@
 {
   "dockerfile_lines": [],
   "graphs": {
-    "panel_master": "./backend/workflows/panel_master.py:graph",
     "deep_researcher": "./backend/workflows/deep_researcher.py:graph",
     "csic_taskmatrix": "./backend/workflows/csic_taskmatrix.py:graph"
   },
@@ -10,4 +9,4 @@
   "dependencies": [
     "."
   ]
-} 
+}
