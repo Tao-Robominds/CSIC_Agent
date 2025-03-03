@@ -7,7 +7,6 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, MessagesState, START, END
 
 import backend.agents.utils.configuration as configuration
-from backend.agents.c_agent import CAgent
 from backend.agents.csic_agent import CSICAgent
 from backend.agents.csic_panel_admin import PanelAdminAgent
 from backend.agents.evaluator_agent import EvaluatorAgent
@@ -43,25 +42,36 @@ def run_panel_admin(state: MessagesState, config: RunnableConfig):
     except (json.JSONDecodeError, TypeError) as e:
         formatted_response = f"Error: {str(e)}\nResponse: {response}"
         
-    return {"messages": [AIMessage(content=formatted_response)]}
+    return {
+        "messages": [AIMessage(content=formatted_response)]
+    }
 
 def run_project_manager(state: MessagesState, config: RunnableConfig):
     """Handle Project Manager's response."""
-    agent = CSICAgent.create("PROJECT_MANAGER", "system", state['messages'][-1].content)
+    agent = CSICAgent.create("PROJECT_MANAGER", "CSIC", state['messages'][-1].content)
     response = agent.actor()
-    return {"messages": [AIMessage(content=f"Project Manager: {response}")]}
+    
+    return {
+        "messages": [AIMessage(content=f"Project Manager: {response}")]
+    }
 
 def run_senior_engineer(state: MessagesState, config: RunnableConfig):
     """Handle Senior Engineer's response."""
-    agent = CSICAgent.create("SENIOR_ENGINEER", "system", state['messages'][-1].content)
+    agent = CSICAgent.create("SENIOR_ENGINEER", "CSIC", state['messages'][-1].content)
     response = agent.actor()
-    return {"messages": [AIMessage(content=f"Senior Engineer: {response}")]}
+    
+    return {
+        "messages": [AIMessage(content=f"Senior Engineer: {response}")]
+    }
 
 def run_principal_engineer(state: MessagesState, config: RunnableConfig):
     """Handle Principal Engineer's response."""
-    agent = CSICAgent.create("PRINCIPAL_ENGINEER", "system", state['messages'][-1].content)
+    agent = CSICAgent.create("PRINCIPAL_ENGINEER", "CSIC", state['messages'][-1].content)
     response = agent.actor()
-    return {"messages": [AIMessage(content=f"Principal Engineer: {response}")]}
+    
+    return {
+        "messages": [AIMessage(content=f"Principal Engineer: {response}")]
+    }
 
 def summarize_discussion(state: MessagesState, config: RunnableConfig):
     messages = state['messages']
@@ -111,25 +121,7 @@ def summarize_discussion(state: MessagesState, config: RunnableConfig):
 def evaluate_summary(state: MessagesState, config: RunnableConfig):
     """Evaluate the panel discussion summary."""
     messages = state['messages']
-    
-    # Get or initialize the loop counter
-    loop_count = state.get("loop_count", 0)
-    
-    # Check if we've exceeded maximum loops (e.g., 3 attempts)
-    MAX_LOOPS = 3
-    if loop_count >= MAX_LOOPS:
-        return {
-            "messages": [
-                AIMessage(content="⚠️ Maximum iteration limit reached. Final summary:\n\n" + 
-                         next((msg.content for msg in reversed(messages) 
-                              if isinstance(msg, AIMessage) 
-                              and not msg.content.startswith("Starting panel discussion")), ""))
-            ]
-        }
-    
-    # Increment loop counter
-    state["loop_count"] = loop_count + 1
-    
+
     # Get the original task/inquiry
     inquiry = next((msg.content for msg in messages if isinstance(msg, HumanMessage)), "")
     
@@ -138,27 +130,20 @@ def evaluate_summary(state: MessagesState, config: RunnableConfig):
                    if isinstance(msg, AIMessage) 
                    and not msg.content.startswith("Starting panel discussion")), "")
     
-
     # Create evaluator agent
-    configurable = configuration.Configuration.from_runnable_config(config)
-    user_id = configurable.user_id
-    evaluator = EvaluatorAgent.create(user_id, inquiry, summary)
+    evaluator = EvaluatorAgent.create("CSIC", inquiry, summary)
     
     # Get evaluation results
     evaluation = evaluator.actor()
     
     # Force re-evaluation for any of these conditions
-    if (len(summary.split()) < 50 or  # Too short
-        "recommend" not in summary.lower() or  # No clear recommendation
-        "action" not in summary.lower()):     # No clear action items
-        
+    if "recommend" not in summary.lower() or "action" not in summary.lower():
         return {
             "messages": [
-                AIMessage(content=f"⚠️ Summary needs improvement (Attempt {loop_count + 1}/{MAX_LOOPS}): Missing key components or insufficient detail. Restarting panel discussion.")
+                AIMessage(content=f"Summary needs improvement: Missing key components or insufficient detail. Restarting panel discussion.")
             ]
         }
     
-    # If we made it here, the summary passed all checks
     return {
         "messages": [
             AIMessage(content="Summary evaluation passed all criteria.")
@@ -174,10 +159,8 @@ def route_after_evaluation(state: MessagesState, config: RunnableConfig) -> Lite
     # If the message contains "needs improvement", route back to panel_admin
     if "needs improvement" in message.content:
         return "panel_admin"
-    # If the message indicates success, end the workflow
     elif "Summary evaluation passed" in message.content:
         return END
-    # Default case - end the workflow
     return END
 
 # Create the graph + all nodes
