@@ -2,7 +2,8 @@
   "dockerfile_lines": [],
   "graphs": {
     "deep_researcher": "./backend/workflows/deep_researcher.py:graph",
-    "csic_taskmatrix": "./backend/workflows/csic_taskmatrix.py:graph"
+    "csic_taskmatrix": "./backend/workflows/csic_taskmatrix.py:graph",
+    "naive_taskmatrix": "./backend/workflows/naive_taskmatrix.py:graph"
   },
   "env": "./.env",
   "python_version": "3.12",
