@@ -32,8 +32,14 @@ def run_project_manager(state: MessagesState, config: RunnableConfig):
     agent = ProjectManagerAgent(user_id="CSIC", task=inquiry)
     response = agent.actor()
     
+    # Include mention of research in the response
+    output = (
+        f"Project Manager's perspective (with research-backed evidence):\n\n"
+        f"{response['response']}"
+    )
+    
     return {
-        "messages": [AIMessage(content=response["response"])]
+        "messages": [AIMessage(content=output)]
     }
 
 def run_senior_engineer(state: MessagesState, config: RunnableConfig):
@@ -42,8 +48,14 @@ def run_senior_engineer(state: MessagesState, config: RunnableConfig):
     agent = SeniorEngineerAgent(user_id="CSIC", task=inquiry)
     response = agent.actor()
     
+    # Include mention of research in the response
+    output = (
+        f"Senior Engineer's perspective (with research-backed evidence):\n\n"
+        f"{response['response']}"
+    )
+    
     return {
-        "messages": [AIMessage(content=response["response"])]
+        "messages": [AIMessage(content=output)]
     }
 
 def run_principal_engineer(state: MessagesState, config: RunnableConfig):
@@ -52,8 +64,14 @@ def run_principal_engineer(state: MessagesState, config: RunnableConfig):
     agent = PrincipalEngineerAgent(user_id="CSIC", task=inquiry)
     response = agent.actor()
     
+    # Include mention of research in the response
+    output = (
+        f"Principal Engineer's perspective (with research-backed evidence):\n\n"
+        f"{response['response']}"
+    )
+    
     return {
-        "messages": [AIMessage(content=response["response"])]
+        "messages": [AIMessage(content=output)]
     }
 
 def summarize_discussion(state: MessagesState, config: RunnableConfig):
@@ -63,24 +81,25 @@ def summarize_discussion(state: MessagesState, config: RunnableConfig):
     # Get the original inquiry
     inquiry = next((msg.content for msg in messages if isinstance(msg, HumanMessage)), "")
     
-    # Collect all agent responses
+    # Collect all agent responses with agent type detection
     discussion = []
     
     for i, msg in enumerate(messages):
         if isinstance(msg, AIMessage) and i > 0:  # Skip the initial panel discussion message
-            # Determine agent type based on content patterns or message position
+            # Determine agent type based on content patterns
             agent_type = "unknown"
-            # Simplified agent type detection based on message order
-            if i == 2:  # First response is from Project Manager
+            content = msg.content
+            
+            if "Project Manager's perspective" in content:
                 agent_type = "project_manager"
-            elif i == 3:  # Second response is from Senior Engineer
+            elif "Senior Engineer's perspective" in content:
                 agent_type = "senior_engineer"
-            elif i == 4:  # Third response is from Principal Engineer
+            elif "Principal Engineer's perspective" in content:
                 agent_type = "principal_engineer"
                 
             discussion.append({
                 "agent_type": agent_type,
-                "response": msg.content
+                "response": content
             })
     
     # Only proceed if we have all expected responses
@@ -90,7 +109,7 @@ def summarize_discussion(state: MessagesState, config: RunnableConfig):
         
         return {
             "messages": [
-                AIMessage(content=f"\n\nSummary of Panel Discussion:\n\n{summary['summary']}")
+                AIMessage(content=f"\n\nSummary of Evidence-Based Panel Discussion:\n\n{summary['summary']}")
             ]
         }
     else:
@@ -114,8 +133,8 @@ def evaluate_summary(state: MessagesState, config: RunnableConfig):
                    and not msg.content.startswith("⏳")), "")
     
     # Extract just the summary part if it includes the header
-    if "Summary of Panel Discussion:" in summary:
-        summary = summary.split("Summary of Panel Discussion:", 1)[1].strip()
+    if "Summary of Evidence-Based Panel Discussion:" in summary:
+        summary = summary.split("Summary of Evidence-Based Panel Discussion:", 1)[1].strip()
     
     # Create evaluator agent
     evaluator = EvaluatorAgent(user_id="CSIC", task=inquiry, summary=summary)
@@ -123,32 +142,50 @@ def evaluate_summary(state: MessagesState, config: RunnableConfig):
     # Get evaluation results
     evaluation = evaluator.actor()
     
-    # Format the evaluation results for display
-    result = f"Summary Evaluation:\n\n"
+    # Check each criteria individually to determine overall pass
+    criteria = evaluation["criteria"]
+    all_criteria_passed = all([
+        criteria.completeness,
+        criteria.actionability,
+        criteria.clarity,
+        criteria.stakeholder_alignment,
+        criteria.feasibility
+    ])
     
-    if evaluation["passes"]:
+    # Format the evaluation results for display
+    result = f"Summary Evaluation of Evidence-Based Discussion:\n\n"
+    
+    if all_criteria_passed:
         result += "✅ The summary passes all evaluation criteria.\n\n"
     else:
         result += "❌ The summary needs improvement in the following areas:\n\n"
         
-        criteria = evaluation["criteria"]
-        for criterion, passes in [
-            ("Completeness", criteria.completeness),
-            ("Actionability", criteria.actionability),
-            ("Clarity", criteria.clarity),
-            ("Stakeholder Alignment", criteria.stakeholder_alignment),
-            ("Feasibility", criteria.feasibility)
-        ]:
-            icon = "✅" if passes else "❌"
-            result += f"{icon} {criterion}\n"
-        
-        result += "\nImprovement Suggestions:\n"
+    # Show detailed criteria results
+    result += "## Detailed Criteria Assessment:\n\n"
+    for criterion, passes in [
+        ("Completeness", criteria.completeness),
+        ("Actionability", criteria.actionability),
+        ("Clarity", criteria.clarity),
+        ("Stakeholder Alignment", criteria.stakeholder_alignment),
+        ("Feasibility", criteria.feasibility)
+    ]:
+        icon = "✅" if passes else "❌"
+        result += f"{icon} {criterion}\n"
+    
+    # Add suggestions section
+    if evaluation["suggestions"]:
+        result += "\n## Improvement Suggestions:\n"
         for suggestion in evaluation["suggestions"]:
             result += f"- {suggestion}\n"
     
+    # Include the full evaluation text
+    result += "\n## Complete Evaluation Details:\n\n"
+    result += evaluation.get("full_evaluation", "Full evaluation details not available.")
+    
+    # Create a result message with metadata to help routing
     return {
         "messages": [
-            AIMessage(content=result)
+            AIMessage(content=result, additional_kwargs={"all_criteria_passed": all_criteria_passed})
         ]
     }
 
@@ -157,9 +194,12 @@ def route_after_evaluation(state: MessagesState, config: RunnableConfig) -> Lite
     message = state['messages'][-1]
     if not isinstance(message, AIMessage):
         return END
-        
-    # If the message contains "needs improvement", route back to beginning
-    if "needs improvement" in message.content:
+    
+    # Check the additional_kwargs metadata for the pass status
+    all_criteria_passed = message.additional_kwargs.get("all_criteria_passed", False)
+    
+    # If any criteria failed, route back to run_panel_discussions
+    if not all_criteria_passed:
         return "run_panel_discussions"
     else:
         return END

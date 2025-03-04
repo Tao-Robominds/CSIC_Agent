@@ -81,6 +81,11 @@ Evaluate strictly and provide specific, actionable feedback."""
             evaluation.feasibility
         ])
 
+        # Ensure our evaluation is consistent
+        if not passes_evaluation and "passes all criteria" in response.content.lower():
+            print("Warning: Inconsistency detected. Evaluator claims summary passes but individual criteria failed.")
+        
+        # Override the evaluator's pass/fail decision with our calculated one
         return {
             "passes": passes_evaluation,
             "criteria": evaluation,
@@ -90,12 +95,33 @@ Evaluate strictly and provide specific, actionable feedback."""
 
     def _parse_evaluation(self, response: str) -> EvaluationCriteria:
         """Parse the GPT response into structured evaluation criteria"""
-        # Simple parsing based on keywords
-        completeness = "not complete" not in response.lower() and "lacks completeness" not in response.lower()
-        actionability = "not actionable" not in response.lower() and "lacks actionability" not in response.lower() 
-        clarity = "not clear" not in response.lower() and "lacks clarity" not in response.lower()
-        stakeholder_alignment = "not aligned" not in response.lower() and "lacks alignment" not in response.lower()
-        feasibility = "not feasible" not in response.lower() and "lacks feasibility" not in response.lower()
+        # Enhanced parsing that looks for explicit pass/fail statements
+        completeness_patterns = ["completeness: false", "completeness:false", "not complete", "lacks completeness", "completeness is false"]
+        actionability_patterns = ["actionability: false", "actionability:false", "not actionable", "lacks actionability", "actionability is false"]
+        clarity_patterns = ["clarity: false", "clarity:false", "not clear", "lacks clarity", "clarity is false"]
+        alignment_patterns = ["stakeholder alignment: false", "stakeholder alignment:false", "not aligned", "lacks alignment", "alignment is false", "stakeholder_alignment: false"]
+        feasibility_patterns = ["feasibility: false", "feasibility:false", "not feasible", "lacks feasibility", "feasibility is false"]
+        
+        response_lower = response.lower()
+        
+        # Check for matches to failure patterns
+        completeness = not any(pattern in response_lower for pattern in completeness_patterns)
+        actionability = not any(pattern in response_lower for pattern in actionability_patterns)
+        clarity = not any(pattern in response_lower for pattern in clarity_patterns)
+        stakeholder_alignment = not any(pattern in response_lower for pattern in alignment_patterns)
+        feasibility = not any(pattern in response_lower for pattern in feasibility_patterns)
+        
+        # Double-check by looking for explicit "False" after criterion name
+        if "**completeness:" in response_lower and "false" in response_lower.split("**completeness:", 1)[1].split("\n", 1)[0].lower():
+            completeness = False
+        if "**actionability:" in response_lower and "false" in response_lower.split("**actionability:", 1)[1].split("\n", 1)[0].lower():
+            actionability = False
+        if "**clarity:" in response_lower and "false" in response_lower.split("**clarity:", 1)[1].split("\n", 1)[0].lower():
+            clarity = False
+        if "**stakeholder alignment:" in response_lower and "false" in response_lower.split("**stakeholder alignment:", 1)[1].split("\n", 1)[0].lower():
+            stakeholder_alignment = False
+        if "**feasibility:" in response_lower and "false" in response_lower.split("**feasibility:", 1)[1].split("\n", 1)[0].lower():
+            feasibility = False
         
         return EvaluationCriteria(
             completeness=completeness,

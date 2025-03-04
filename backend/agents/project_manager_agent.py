@@ -1,9 +1,59 @@
 from typing import Dict
 from langchain_openai import ChatOpenAI
+from backend.agents.utils.researcher import tavily_search, format_sources, deduplicate_and_format_sources
 
 class ProjectManagerAgent:
     """Agent representing the Project Manager in the tunnel inspection scenario"""
     
+    QUERY_GENERATION_PROMPT = """As a Project Manager focused on cost management for infrastructure maintenance,
+generate a search query to find information about cost-effective tunnel inspection methods.
+Focus on budget management, cost comparisons between different inspection technologies, and case studies
+of successful cost-saving approaches for historic infrastructure maintenance.
+
+Your goal is to find evidence to support a sub-£20k solution for inspecting the Islington Tunnel rather than a £40k LiDAR scan.
+
+Generate a specific and targeted search query."""
+
+    RESPONSE_GENERATION_PROMPT = """You are role-playing as a Project Manager (Oversight and Stakeholder Liaison) in a canal tunnel inspection scenario. 
+
+Background:
+- Experience: 8 years managing infrastructure projects
+- Skills: Stakeholder communication and lean budgeting
+- Current Role: Ensures project stays on time and within budget, reports to Canal and River Trust trustees
+- Personality: Results-driven, politically savvy, prioritizes minimizing upfront costs to avoid scrutiny
+- Motivations: Deliver a "good enough" solution without overspending, avoid negative publicity from tunnel failures
+- Key Conflict: Pressured to cut corners but aware of reputational risks if repairs fail
+
+Key Responsibilities:
+- Allocate budgets for inspections/repairs
+- Negotiate with contractors and trustees
+- Balance immediate costs vs. long-term risks
+
+Context:
+- Tunnel Significance: Historic 19th-century structure; vital for London's canal network. Closure would disrupt freight and tourism.
+- Financial Constraints: CRT's maintenance budget is stretched thin. Trustees demand austerity.
+- Stakes: Undetected defects could lead to collapses, PR disasters, or costly emergency closures.
+
+Current Debate: Whether to approve a £40k full LiDAR scan. Senior Engineer opposes it, Principal Engineer suggests a hybrid approach.
+
+Your Position: You demand a sub-£20k solution.
+
+Reasoning Approach: Focus on minimizing expenses. Push for deferring non-critical repairs.
+Interaction Style: Challenge both engineers to justify costs. Seek compromises (e.g., phased scanning).
+
+Example Quote: "The trustees want headlines about 'efficiency,' not 'expensive scans.' Find me a cheaper option by Thursday."
+
+Your Goal: Avoid overspending while mitigating risks.
+
+Task: {task}
+
+Review the research findings below and use them to strengthen your argument for cost-effective solutions:
+
+{research_findings}
+
+Participate in the panel discussion, staying in character as the Project Manager throughout your responses.
+Cite specific cost figures, technologies, or approaches from the research to support your position."""
+
     AGENT_PROMPT = """You are role-playing as a Project Manager (Oversight and Stakeholder Liaison) in a canal tunnel inspection scenario. 
 
 Background:
@@ -43,21 +93,72 @@ Participate in the panel discussion, staying in character as the Project Manager
         self.user_id = user_id
         self.task = task
         self.model = ChatOpenAI(model="gpt-4o", temperature=0.7)
+        self.search_model = ChatOpenAI(model="gpt-4o", temperature=0.2)
+        
+    def _generate_search_query(self) -> str:
+        """Generate a search query based on the Project Manager's perspective"""
+        messages = [
+            {
+                "role": "system",
+                "content": self.QUERY_GENERATION_PROMPT
+            },
+            {
+                "role": "user",
+                "content": f"Generate a search query to find evidence supporting cost-effective tunnel inspection solutions under £20k for the task: {self.task}"
+            }
+        ]
+        
+        # Call GPT for query generation
+        response = self.search_model.invoke(messages)
+        return response.content
+        
+    def _perform_web_search(self, query: str) -> Dict:
+        """Perform web search using Tavily"""
+        try:
+            search_results = tavily_search(
+                query, 
+                include_raw_content=True, 
+                max_results=2
+            )
+            formatted_results = deduplicate_and_format_sources(
+                search_results, 
+                max_tokens_per_source=500, 
+                include_raw_content=True
+            )
+            sources = format_sources(search_results)
+            
+            return {
+                "formatted_results": formatted_results,
+                "sources": sources
+            }
+        except Exception as e:
+            print(f"Error in web search: {e}")
+            return {
+                "formatted_results": "No research findings available due to search error.",
+                "sources": "Search error occurred."
+            }
         
     def perceiver(self) -> Dict[str, str]:
-        """Prepare the agent context"""
+        """Prepare the agent context with web research"""
+        # Generate search query
+        search_query = self._generate_search_query()
+        
+        # Perform web search
+        search_results = self._perform_web_search(search_query)
+        
         return {
-            "task": self.task
+            "task": self.task,
+            "research_findings": search_results["formatted_results"]
         }
         
     def actor(self) -> Dict:
-        """Generate the Project Manager's contribution"""
+        """Generate the Project Manager's contribution with research-backed evidence"""
         context = self.perceiver()
         
         messages = [
             {
                 "role": "system",
-                "content": self.AGENT_PROMPT.format(**context)
+                "content": self.RESPONSE_GENERATION_PROMPT.format(**context)
             }
         ]
         
@@ -66,7 +167,8 @@ Participate in the panel discussion, staying in character as the Project Manager
         
         return {
             "response": response.content,
-            "agent_type": "project_manager"
+            "agent_type": "project_manager",
+            "research": context["research_findings"]
         }
         
     @classmethod
