@@ -1,6 +1,7 @@
 from typing import Dict
 from langchain_openai import ChatOpenAI
 from backend.agents.utils.researcher import tavily_search, format_sources, deduplicate_and_format_sources
+from backend.components.llamaindex_parser import LlamaIndexParser, LlamaIndexRequest
 
 class SeniorEngineerAgent:
     """Agent representing the Senior Engineer in the tunnel inspection scenario"""
@@ -139,17 +140,46 @@ Participate in the panel discussion, staying in character as the Senior Engineer
             }
         
     def perceiver(self) -> Dict[str, str]:
-        """Prepare the agent context with web research"""
+        """Prepare the agent context with web research and vector database information"""
         # Generate search query
         search_query = self._generate_search_query()
         
         # Perform web search
         search_results = self._perform_web_search(search_query)
         
+        # Retrieve information from vector database from senior engineer perspective
+        vector_db_results = self._retrieve_from_vector_db(search_query)
+        
+        # Combine research findings
+        combined_findings = search_results["formatted_results"]
+        if vector_db_results and vector_db_results.get("status") == "success":
+            combined_findings += "\n\n" + vector_db_results.get("formatted_content", "")
+        
         return {
             "task": self.task,
-            "research_findings": search_results["formatted_results"]
+            "research_findings": combined_findings
         }
+        
+    def _retrieve_from_vector_db(self, query: str) -> Dict:
+        """Retrieve information from LlamaIndex vector database from senior engineer perspective"""
+        try:
+            # Create LlamaIndex request
+            request = LlamaIndexRequest(
+                query=query,
+                perspective="senior_engineer",
+                top_k=3
+            )
+            
+            # Retrieve information from vector database
+            parser = LlamaIndexParser(request)
+            return parser.query()
+        except Exception as e:
+            print(f"Error retrieving from vector database: {e}")
+            return {
+                "status": "error",
+                "formatted_content": "",
+                "error": str(e)
+            }
         
     def actor(self) -> Dict:
         """Generate the Senior Engineer's contribution with research-backed evidence"""

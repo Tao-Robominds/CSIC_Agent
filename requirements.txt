@@ -12,3 +12,5 @@ wikipedia
 trustcall
 langgraph-cli
 redis
+llama-index-core
+llama-index-indices-managed-llama-cloud

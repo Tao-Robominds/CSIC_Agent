@@ -15,13 +15,22 @@ from backend.agents.evaluator_agent import EvaluatorAgent
 
 model = ChatOpenAI(model="gpt-4o", temperature=0.3)
 
+# Counter to track the number of loop iterations
+iteration_counter = 0
+MAX_ITERATIONS = 3
+
 def run_panel_discussions(state: MessagesState, config: RunnableConfig):
     """Initialize panel discussion process."""
+    global iteration_counter
+    
+    # Increment the iteration counter
+    iteration_counter += 1
+    
     inquiry = state['messages'][-1].content
     
     return {
         "messages": [
-            AIMessage(content=f"Panel discussion: Islington Tunnel Inspection Strategy\n\nTask: {inquiry}"),
+            AIMessage(content=f"Panel discussion: Islington Tunnel Inspection Strategy (Iteration {iteration_counter}/{MAX_ITERATIONS})\n\nTask: {inquiry}"),
             HumanMessage(content=inquiry)
         ]
     }
@@ -191,6 +200,8 @@ def evaluate_summary(state: MessagesState, config: RunnableConfig):
 
 def route_after_evaluation(state: MessagesState, config: RunnableConfig) -> Literal["run_panel_discussions", END]: # type: ignore
     """Route based on evaluation results."""
+    global iteration_counter
+    
     message = state['messages'][-1]
     if not isinstance(message, AIMessage):
         return END
@@ -198,10 +209,12 @@ def route_after_evaluation(state: MessagesState, config: RunnableConfig) -> Lite
     # Check the additional_kwargs metadata for the pass status
     all_criteria_passed = message.additional_kwargs.get("all_criteria_passed", False)
     
-    # If any criteria failed, route back to run_panel_discussions
-    if not all_criteria_passed:
+    # If any criteria failed and we haven't reached max iterations, route back to run_panel_discussions
+    if not all_criteria_passed and iteration_counter < MAX_ITERATIONS:
         return "run_panel_discussions"
     else:
+        # Reset counter for next workflow run
+        iteration_counter = 0
         return END
 
 # Create the graph + all nodes
